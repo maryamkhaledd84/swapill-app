@@ -198,6 +198,33 @@ export default function Profile() {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  // Color palette for dynamic avatar backgrounds
+  const avatarColors = [
+    '#EC4899', // Pink
+    '#10B981', // Green
+    '#F59E0B', // Amber
+    '#8B5CF6', // Violet
+    '#3B82F6', // Blue
+    '#EF4444', // Red
+    '#06B6D4', // Cyan
+    '#F97316', // Orange
+    '#84CC16', // Lime
+    '#6366F1', // Indigo
+    '#14B8A6', // Teal
+    '#A855F7', // Purple
+  ];
+
+  // Helper function to get consistent color for user
+  const getAvatarColor = (userId: string, fullName?: string) => {
+    const seed = fullName || userId || 'default';
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % avatarColors.length;
+    return avatarColors[index];
+  };
+
   // Image compression function for mobile optimization
   const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
@@ -763,14 +790,20 @@ export default function Profile() {
                             const parent = target.parentElement;
                             if (parent && !parent.querySelector('.fallback-circle')) {
                               const fallback = document.createElement('div');
-                              fallback.className = 'fallback-circle absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-400 rounded-full text-white font-bold text-2xl';
-                              fallback.textContent = (getDisplayProfile()?.full_name || getDisplayProfile()?.name || 'U').charAt(0).toUpperCase();
+                              const profile = getDisplayProfile();
+                              const avatarColor = getAvatarColor(profile?.id || '', profile?.full_name || profile?.name || '');
+                              fallback.className = 'fallback-circle absolute inset-0 flex items-center justify-center rounded-full';
+                              fallback.style.backgroundColor = avatarColor;
+                              fallback.innerHTML = `<span class="text-white font-bold text-3xl">${(profile?.full_name || profile?.name || 'U').charAt(0).toUpperCase()}</span>`;
                               parent.appendChild(fallback);
                             }
                           }}
                         />
                       ) : (
-                        <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                        <div 
+                          className="w-full h-full rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: getAvatarColor(getDisplayProfile()?.id || '', getDisplayProfile()?.full_name || getDisplayProfile()?.name || '') }}
+                        >
                           <span className="text-white font-bold text-2xl">
                             {(getDisplayProfile()?.full_name || getDisplayProfile()?.name || 'U').charAt(0).toUpperCase()}
                           </span>

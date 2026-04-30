@@ -111,6 +111,44 @@
   scrollbar-width: none;
 }
 
+/* Enhanced scrollbar hiding for horizontal scrolling */
+.scroll-smooth::-webkit-scrollbar {
+  display: none;
+}
+.scroll-smooth {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+/* Custom Skills Filter Container - Fixed Scrolling */
+.skills-filter-container {
+  display: flex;
+  overflow-x: auto;
+  white-space: nowrap;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  gap: 0.5rem;
+  padding-right: 2rem;
+  padding-bottom: 1rem;
+  scroll-behavior: smooth;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: transform;
+  touch-action: pan-x pinch-zoom;
+}
+
+.skills-filter-container::-webkit-scrollbar {
+  display: none;
+}
+
+.skills-filter-container button {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+}
+
 /* Line clamp utilities for text truncation */
 .line-clamp-1 {
   overflow: hidden;
@@ -134,4 +172,69 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-clamp: 3;
+}
+
+/* Mobile Form Input Improvements */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    line-height: 1.5;
+    padding: 12px 16px;
+    min-height: 48px;
+    border-radius: 12px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    transition: all 0.2s ease;
+  }
+  
+  input[type="text"]:focus,
+  input[type="email"]:focus,
+  input[type="password"]:focus,
+  input[type="tel"]:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: rgba(139, 92, 246, 0.5);
+    background-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8;
+  }
+  
+  /* Prevent layout shift during input focus */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Improve touch targets for form elements */
+  button,
+  .btn-primary,
+  .btn-secondary {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 12px 24px;
+    font-size: 16px;
+  }
+  
+  /* Better spacing for mobile forms */
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+  
+  .form-label {
+    font-size: 14px;
+    margin-bottom: 0.5rem;
+    display: block;
+    color: #e2e8f0;
+    font-weight: 500;
+  }
 }

@@ -581,9 +581,72 @@ export default function Explore() {
     
     if (activeCategory !== 'all') {
       filtered = allUsers.filter(user => {
-        // Handle real users with skills array
+        // Handle real users with skills array (object format)
         if (user.skills && Array.isArray(user.skills)) {
-          return user.skills.some((skill: any) => skill.category === activeCategory);
+          return user.skills.some((skill: any) => {
+            // Check if skill is object with category property
+            if (typeof skill === 'object' && skill.category) {
+              return skill.category === activeCategory;
+            }
+            // Check if skill is string and matches category name
+            if (typeof skill === 'string') {
+              // Map skill strings to categories
+              const skillCategoryMap: { [key: string]: string } = {
+                'React': 'web',
+                'TypeScript': 'web', 
+                'Node.js': 'web',
+                'Vue.js': 'web',
+                'Python': 'web',
+                'Django': 'web',
+                'Machine Learning': 'web',
+                'Data Analysis': 'web',
+                'Modern Arabic': 'languages',
+                'Classical Arabic': 'languages',
+                'Egyptian Dialect': 'languages',
+                'Business English': 'languages',
+                'IELTS Prep': 'languages',
+                'iOS': 'mobile',
+                'Android': 'mobile',
+                'React Native': 'mobile',
+                'Figma': 'design',
+                'Adobe XD': 'design',
+                'Prototyping': 'design',
+                'Portrait': 'photography',
+                'Landscape': 'photography',
+                'Event Photography': 'photography',
+                'Presentation Skills': 'speaking',
+                'Debate Coaching': 'speaking',
+                'Corporate Training': 'speaking',
+                'Agile': 'management',
+                'Scrum': 'management',
+                'Team Leadership': 'management',
+                'Egyptian Cuisine': 'cooking',
+                'Levantine Dishes': 'cooking',
+                'Desserts': 'cooking',
+                'SEO': 'marketing',
+                'Social Media': 'marketing',
+                'Content Strategy': 'marketing',
+                'Instagram': 'marketing',
+                'Facebook': 'marketing',
+                'Beat Making': 'music',
+                'Audio Engineering': 'music',
+                'MIDI Production': 'music',
+                'Documentation': 'writing',
+                'API Writing': 'writing',
+                'Content Creation': 'writing',
+                'Blog Writing': 'writing',
+                'Copywriting': 'writing',
+                'SEO Content': 'writing',
+                'ChatGPT': 'prompt',
+                'Automation': 'prompt',
+                'AI Strategy': 'prompt',
+                'AI Prompts': 'prompt',
+                'Midjourney': 'prompt'
+              };
+              return skillCategoryMap[skill] === activeCategory;
+            }
+            return false;
+          });
         }
         // Handle mock users with topSkill.category
         return user.topSkill?.category === activeCategory;
@@ -618,8 +681,54 @@ export default function Explore() {
     // toast.success(`Swap request sent to ${userName}!`);
   };
 
-  // Get avatar SVG based on type
-  const getAvatarSvg = (avatarType: string) => {
+  // Color palette for dynamic avatar backgrounds
+  const avatarColors = [
+    '#EC4899', // Pink
+    '#10B981', // Green
+    '#F59E0B', // Amber
+    '#8B5CF6', // Violet
+    '#3B82F6', // Blue
+    '#EF4444', // Red
+    '#06B6D4', // Cyan
+    '#F97316', // Orange
+    '#84CC16', // Lime
+    '#6366F1', // Indigo
+    '#14B8A6', // Teal
+    '#A855F7', // Purple
+  ];
+
+  // Helper function to get consistent color for user
+  const getAvatarColor = (userId: string, fullName?: string) => {
+    const seed = fullName || userId || 'default';
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % avatarColors.length;
+    return avatarColors[index];
+  };
+
+  // Helper function to get icon for category
+  const getIconForCategory = (category: string) => {
+    const categoryIconMap: { [key: string]: any } = {
+      'web': Code,
+      'mobile': Smartphone,
+      'design': Palette,
+      'marketing': TrendingUp,
+      'languages': Globe,
+      'writing': PenTool,
+      'music': Music,
+      'cooking': ChefHat,
+      'prompt': Sparkles,
+      'photography': Camera,
+      'speaking': Mic,
+      'management': Kanban
+    };
+    return categoryIconMap[category] || Sparkles; // Fallback to Sparkles
+  };
+
+  // Helper function to get avatar SVG
+  const getAvatarSvg = (type: string) => {
     const avatars: { [key: string]: React.ReactElement } = {
       panda: (
         <svg viewBox="0 0 100 100" className="w-full h-full">
@@ -731,13 +840,13 @@ export default function Explore() {
         </svg>
       )
     };
-    return avatars[avatarType] || avatars.panda;
+    return avatars[type] || avatars.panda;
   };
 
   return (
-    <div className="min-h-screen pt-32 pb-24 max-w-7xl mx-auto px-6">
+    <div className="min-h-screen pt-32 pb-24 max-w-7xl mx-auto px-4 md:px-6">
       {/* Hero Header */}
-      <div className="text-center mb-12">
+      <div className="text-center mb-12 md:mb-16">
         <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-violet-600 bg-clip-text text-transparent">
           Discover your next skill swap
         </h1>
@@ -779,8 +888,8 @@ export default function Explore() {
       )}
       
       {/* Skills Category Filter */}
-      <div className="mb-12">
-        <div className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide">
+      <div className="mb-12 md:mb-16">
+        <div className="skills-filter-container">
           {SKILL_CATEGORIES.map((category) => (
             <motion.button
               key={category.id}
@@ -805,8 +914,8 @@ export default function Explore() {
       </div>
 
       {/* Results Grid */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="mb-8 md:mb-12">
+        <div className="flex items-center justify-between mb-6 md:mb-8">
           <h2 className="text-2xl font-semibold text-white">
             {filteredUsers.length} Expert{filteredUsers.length !== 1 ? 's' : ''} Found
           </h2>
@@ -825,10 +934,37 @@ export default function Explore() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6"
           >
             {filteredUsers.map((user, index) => {
-              const topSkill = user.topSkill;
+              // Find skill that matches selected category, or fallback to topSkill
+              let displaySkill = user.topSkill;
+              
+              if (activeCategory !== 'all' && user.skills && Array.isArray(user.skills)) {
+                const matchingSkill = user.skills.find((skill: any) => {
+                  if (typeof skill === 'object' && skill.category) {
+                    return skill.category === activeCategory;
+                  }
+                  return false;
+                });
+                
+                if (matchingSkill && typeof matchingSkill === 'object') {
+                  displaySkill = matchingSkill;
+                }
+              }
+              
+              // Ensure displaySkill has proper icon
+              if (displaySkill && typeof displaySkill === 'object' && !displaySkill.icon) {
+                displaySkill = {
+                  ...displaySkill,
+                  icon: getIconForCategory(displaySkill.category || 'web')
+                };
+              }
+              
+              // Don't render card if no displaySkill in filtered view
+              if (!displaySkill || (activeCategory !== 'all' && !displaySkill)) {
+                return null;
+              }
               
               return (
               <motion.div
@@ -836,7 +972,7 @@ export default function Explore() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
-                className="glass-card p-6 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all duration-300 hover:scale-105"
+                className="glass-card p-4 md:p-6 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all duration-300 hover:scale-105"
               >
                 {/* User Header */}
                 <div className="flex items-center gap-4 mb-4">
@@ -853,7 +989,9 @@ export default function Explore() {
                             const parent = target.parentElement;
                             if (parent && !parent.querySelector('.fallback-initials')) {
                               const fallback = document.createElement('div');
-                              fallback.className = 'fallback-initials absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500 to-violet-600 rounded-full';
+                              const avatarColor = getAvatarColor(String(user.id || ''), user.name || '');
+                              fallback.className = 'fallback-initials absolute inset-0 flex items-center justify-center rounded-full';
+                              fallback.style.backgroundColor = avatarColor;
                               fallback.innerHTML = `<span class="text-white font-bold text-lg">${user.initials || (user.name || '').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
                               parent.appendChild(fallback);
                             }
@@ -862,18 +1000,21 @@ export default function Explore() {
                       </div>
                     ) : user.useAvatar ? (
                       <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-purple-500/30 flex items-center justify-center overflow-hidden">
-                        {getAvatarSvg(user.avatarType)}
+                        {getAvatarSvg((user as any).avatarType)}
                       </div>
                     ) : (
-                      <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${user.gradient || 'from-purple-500 to-violet-600'} border-2 border-purple-500/30 flex items-center justify-center`}>
+                      <div 
+                        className="w-16 h-16 rounded-full border-2 border-purple-500/30 flex items-center justify-center"
+                        style={{ backgroundColor: getAvatarColor(String(user.id || ''), user.name || '') }}
+                      >
                         <span className="text-white font-bold text-lg">{user.initials || (user.name || '').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}</span>
                       </div>
                     )}
                     <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-slate-950" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1 truncate">{user.name || 'Unknown User'}</h3>
-                    <div className="flex items-center gap-1 text-sm text-slate-400 flex-wrap">
+                    <h3 className="text-lg md:text-xl font-semibold text-white mb-1 truncate">{user.name || 'Unknown User'}</h3>
+                    <div className="flex items-center gap-1 text-sm md:text-base text-slate-400 flex-wrap">
                       {user.rating > 0 ? (
                         <span> {user.rating.toFixed(1)}</span>
                       ) : (
@@ -887,19 +1028,19 @@ export default function Explore() {
 
                 {/* Bio */}
                 <div className="mb-4">
-                  <p className="text-sm text-slate-300 leading-relaxed line-clamp-3">{user.bio || 'No bio available'}</p>
+                  <p className="text-sm md:text-base text-slate-300 leading-relaxed line-clamp-3">{user.bio || 'No bio available'}</p>
                 </div>
 
                 {/* Top Skill */}
-                {topSkill && (
+                {displaySkill && typeof displaySkill === 'object' && (
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-violet-500/20 flex items-center justify-center">
-                        <topSkill.icon className="w-4 h-4 text-purple-400" />
+                        {displaySkill.icon && <displaySkill.icon className="w-4 h-4 text-purple-400" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-white font-medium truncate">{topSkill.title}</h4>
-                        <p className="text-xs text-slate-500 capitalize truncate">{topSkill.category}</p>
+                        <h4 className="text-white font-medium text-sm md:text-base truncate">{displaySkill.title}</h4>
+                        <p className="text-xs md:text-sm text-slate-500 capitalize truncate">{displaySkill.category}</p>
                       </div>
                     </div>
                     
@@ -926,7 +1067,7 @@ export default function Explore() {
                 {currentUser && (user as any).id === currentUser.id ? (
                   <button
                     onClick={() => navigate('/profile')}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-sm md:text-base min-h-[44px] md:min-h-[48px]"
+                    className="w-full px-6 py-4 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-base md:text-lg min-h-[48px] md:min-h-[52px]"
                   >
                     <User className="w-4 h-4" />
                     <span>View Profile</span>
@@ -934,7 +1075,7 @@ export default function Explore() {
                 ) : (
                   <button
                     onClick={() => navigate(`/profile/${(user as any).id}`)}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-sm md:text-base min-h-[44px] md:min-h-[48px]"
+                    className="w-full px-6 py-4 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-base md:text-lg min-h-[48px] md:min-h-[52px]"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>Request Swap</span>

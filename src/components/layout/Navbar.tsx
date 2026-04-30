@@ -9,8 +9,35 @@ import { useAuth } from "../../App";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import toast from 'react-hot-toast';
 
+// Color palette for dynamic avatar backgrounds
+const avatarColors = [
+  '#EC4899', // Pink
+  '#10B981', // Green
+  '#F59E0B', // Amber
+  '#8B5CF6', // Violet
+  '#3B82F6', // Blue
+  '#EF4444', // Red
+  '#06B6D4', // Cyan
+  '#F97316', // Orange
+  '#84CC16', // Lime
+  '#6366F1', // Indigo
+  '#14B8A6', // Teal
+  '#A855F7', // Purple
+];
+
+// Helper function to get consistent color for user
+const getAvatarColor = (userId: string, fullName?: string) => {
+  const seed = fullName || userId || 'default';
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % avatarColors.length;
+  return avatarColors[index];
+};
+
 // Modern Avatar Component for Navbar
-function UserAvatar({ avatarUrl, name, size = "small" }: { avatarUrl?: string; name: string; size?: "small" | "medium" }) {
+function UserAvatar({ avatarUrl, name, size = "small", userId }: { avatarUrl?: string; name: string; size?: "small" | "medium"; userId?: string }) {
   const sizeClasses = {
     small: "w-8 h-8",
     medium: "w-10 h-10"
@@ -24,7 +51,9 @@ function UserAvatar({ avatarUrl, name, size = "small" }: { avatarUrl?: string; n
     const parent = target.parentElement;
     if (parent && !parent.querySelector('.fallback-circle')) {
       const fallback = document.createElement('div');
-      fallback.className = 'fallback-circle absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-400 rounded-full text-white font-bold text-sm';
+      const avatarColor = getAvatarColor(userId || '', name);
+      fallback.className = 'fallback-circle absolute inset-0 flex items-center justify-center rounded-full text-white font-bold text-sm';
+      fallback.style.backgroundColor = avatarColor;
       fallback.textContent = name.charAt(0).toUpperCase();
       parent.appendChild(fallback);
     }
@@ -48,10 +77,13 @@ function UserAvatar({ avatarUrl, name, size = "small" }: { avatarUrl?: string; n
   
   // Default to initials circle
   return (
-    <div className={cn(
-      "rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center border-2 border-white/20",
-      sizeClasses[size]
-    )}>
+    <div 
+      className={cn(
+        "rounded-full flex items-center justify-center border-2 border-white/20",
+        sizeClasses[size]
+      )}
+      style={{ backgroundColor: getAvatarColor(userId || '', name) }}
+    >
       <span className="text-white font-bold text-sm">
         {name.charAt(0).toUpperCase()}
       </span>
@@ -69,6 +101,7 @@ export default function Navbar() {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close auth modal when user is found
   useEffect(() => {
@@ -189,7 +222,7 @@ export default function Navbar() {
           {user && userProfile ? (
             <div className="flex items-center gap-3">
               <Link to="/profile" className="flex items-center gap-2 group p-1 pr-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
-                <UserAvatar avatarUrl={userProfile.avatar_url} name={userProfile.name} size="small" />
+                <UserAvatar avatarUrl={userProfile.avatar_url} name={userProfile.name} size="small" userId={user?.id} />
                 <span className="text-sm font-medium text-gray-200 hidden sm:block">{userProfile.name}</span>
               </Link>
               <button 
@@ -222,8 +255,11 @@ export default function Navbar() {
               </button>
             </div>
           )}
-          <button className="md:hidden p-2 text-slate-400 hover:text-white transition-colors">
-            <Menu className="w-6 h-6" />
+          <button 
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden p-2 text-slate-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </div>
@@ -306,6 +342,86 @@ export default function Navbar() {
               )}
             </div>
           </motion.div>
+        </motion.div>
+      )}
+      
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <motion.div
+          initial={{ opacity: 0, x: '100%' }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: '100%' }}
+          transition={{ duration: 0.3 }}
+          className="fixed inset-0 z-40 md:hidden"
+        >
+          <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed right-0 top-0 h-full w-72 bg-slate-900 border-l border-white/10 p-6 overflow-y-auto">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-white font-semibold text-lg">Menu</h2>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 text-slate-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {navLinks.map((link) => {
+                const isDisabled = link.requiresAuth && !user;
+                return (
+                  <div key={link.path}>
+                    {isDisabled ? (
+                      <span className="flex items-center gap-3 text-sm font-medium text-slate-600 cursor-not-allowed p-3">
+                        <link.icon className="w-5 h-5" />
+                        {link.name}
+                      </span>
+                    ) : (
+                      <Link
+                        to={link.path}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 text-sm font-medium p-3 rounded-lg transition-colors min-h-[44px] ${
+                          location.pathname === link.path
+                            ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                            : "text-slate-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        <link.icon className="w-5 h-5" />
+                        {link.name}
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {user && userProfile && (
+              <div className="mt-8 pt-8 border-t border-white/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <UserAvatar 
+                    avatarUrl={userProfile.avatar_url} 
+                    name={userProfile.name} 
+                    size="small" 
+                    userId={user?.id} 
+                  />
+                  <div>
+                    <p className="text-white font-medium">{userProfile.name}</p>
+                    <p className="text-slate-400 text-sm">{user.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setLogoutModalOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 p-3 rounded-lg transition-colors min-h-[44px]"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </motion.div>
       )}
     </nav>
