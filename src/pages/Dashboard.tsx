@@ -26,6 +26,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { currentUser, loading: profileLoading, updateProfile } = useUserProfile();
+  const [showNameUpdateModal, setShowNameUpdateModal] = useState(false);
+  const [newFullName, setNewFullName] = useState('');
+  const [updatingName, setUpdatingName] = useState(false);
 
    
 
@@ -49,27 +52,57 @@ export default function Dashboard() {
         toast.error('Failed to delete skill');
         return;
       }
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      toast.error('An unexpected error occurred');
+    }
+  };
 
-      toast.success('Skill deleted successfully!');
-      
-      // Refresh skills from database
-      const { data: refreshedSkills, error: refreshError } = await supabase
-        .from('skills')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (refreshError) {
-        console.error('Error refreshing skills:', refreshError);
+  const handleUpdateName = async () => {
+    try {
+      if (!user?.id) {
+        toast.error('User not authenticated');
         return;
       }
 
-      // Update user state with refreshed skills
-      updateProfile({ skills: refreshedSkills || [] });
+      // Get user metadata from auth to find the original name
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authUser) {
+        toast.error('Failed to get user data');
+        return;
+      }
+
+      const originalName = authUser.user_metadata?.full_name;
+      
+      if (!originalName) {
+        toast.error('No name found in your account data');
+        return;
+      }
+
+      // Update the profiles table with the name from auth metadata
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          full_name: originalName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('Error updating profile name:', updateError);
+        toast.error('Failed to update name');
+        return;
+      }
+
+      toast.success('Name updated successfully!');
+      
+      // Refresh the user profile data
+      window.location.reload();
       
     } catch (error) {
-      console.error('Error in handleDeleteSkill:', error);
-      toast.error('An error occurred while deleting the skill');
+      console.error('Unexpected error updating name:', error);
+      toast.error('An unexpected error occurred');
     }
   };
 
@@ -81,6 +114,65 @@ export default function Dashboard() {
     console.log('Editing skill:', skill);
     // Navigate to profile page with skill context for editing
     navigate('/profile', { state: { userId: user.id, editingSkill: skill } });
+  };
+
+  // Check if user has 'New Member' name and show update modal
+  useEffect(() => {
+    if (currentUser && (currentUser.name === 'New Member' || currentUser.name === 'Name Pending' || !currentUser.name)) {
+      setShowNameUpdateModal(true);
+    }
+  }, [currentUser]);
+
+  const handleNameUpdate = async () => {
+    if (!newFullName.trim()) {
+      toast.error('Please enter your full name');
+      return;
+    }
+
+    setUpdatingName(true);
+    
+    try {
+      // Update profiles table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          full_name: newFullName.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('Error updating profile name:', updateError);
+        toast.error('Failed to update name');
+        return;
+      }
+
+      // Update auth metadata
+      const { error: authUpdateError } = await supabase.auth.updateUser({
+        data: {
+          full_name: newFullName.trim()
+        }
+      });
+
+      if (authUpdateError) {
+        console.error('Error updating auth metadata:', authUpdateError);
+        toast.error('Failed to update auth data');
+        return;
+      }
+
+      toast.success('Name updated successfully!');
+      setShowNameUpdateModal(false);
+      setNewFullName('');
+      
+      // Refresh the page to show updated name
+      window.location.reload();
+      
+    } catch (error) {
+      console.error('Unexpected error updating name:', error);
+      toast.error('An unexpected error occurred');
+    } finally {
+      setUpdatingName(false);
+    }
   };
 
   const handleAddSkill = () => {
@@ -180,7 +272,17 @@ export default function Dashboard() {
               {getAvatarDisplay()}
               <div className="absolute bottom-1 right-1 w-6 h-6 bg-green-500 border-4 border-[#1e293b] rounded-full" />
             </div>
-            <h2 className="text-xl font-bold mb-1">{currentUser.name}</h2>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h2 className="text-xl font-bold">{currentUser.name}</h2>
+              {(!currentUser.name || currentUser.name === 'Name Pending' || currentUser.name === 'Unknown User') && (
+                <button
+                  onClick={handleUpdateName}
+                  className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full border border-purple-500/30 hover:bg-purple-500/30 transition-all"
+                >
+                  Update Name
+                </button>
+              )}
+            </div>
             <p className="text-slate-400 text-sm mb-2">{currentUser.location}</p>
             
             {/* Display all skills */}
@@ -346,6 +448,56 @@ export default function Dashboard() {
 
         </div>
       </div>
+
+      {/* Name Update Modal */}
+      {showNameUpdateModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+          <div className="bg-slate-800 rounded-2xl p-8 max-w-md w-full border border-white/10">
+            <h3 className="text-2xl font-bold text-white mb-4">Update Your Name</h3>
+            <p className="text-slate-400 mb-6">
+              Your profile is showing as "New Member". Please enter your full name to personalize your profile.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={newFullName}
+                  onChange={(e) => setNewFullName(e.target.value)}
+                  placeholder="Enter your full name"
+                  className="w-full px-4 py-3 bg-slate-700 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 transition-all"
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => setShowNameUpdateModal(false)}
+                  className="flex-1 px-4 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleNameUpdate}
+                  disabled={updatingName || !newFullName.trim()}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {updatingName ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <span>Update Name</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

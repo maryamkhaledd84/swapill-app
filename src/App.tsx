@@ -92,6 +92,62 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Auto-fix: Sync NULL full_name from auth metadata to profiles table
+  useEffect(() => {
+    if (!user) return;
+
+    const syncProfileName = async () => {
+      try {
+        console.log('=== AUTO-FIX: Checking profile sync for user ===');
+        
+        // Check if user's profile has NULL full_name
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, user_id')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profileError) {
+          console.log('Profile not found or error:', profileError);
+          return;
+        }
+
+        console.log('Profile data:', profile);
+        console.log('Auth metadata:', user.user_metadata);
+
+        // If profile full_name is NULL or empty, sync from auth metadata
+        if (!profile.full_name && user.user_metadata?.full_name) {
+          console.log('Auto-fixing NULL full_name from auth metadata...');
+          
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+              full_name: user.user_metadata.full_name,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', profile.id);
+
+          if (updateError) {
+            console.error('Auto-fix failed:', updateError);
+          } else {
+            console.log('✅ Auto-fix successful: Updated profile with name from auth metadata');
+          }
+        } else {
+          console.log('Profile full_name is already set or no auth metadata available');
+        }
+        
+        console.log('=== END AUTO-FIX ===');
+      } catch (error) {
+        console.error('Error in auto-fix sync:', error);
+      }
+    };
+
+    // Run sync with a slight delay to ensure profile is created
+    const timer = setTimeout(syncProfileName, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [user]);
+
   const signOut = async () => {
     try {
       await supabase.auth.signOut();

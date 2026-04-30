@@ -198,6 +198,57 @@ export default function Profile() {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  // Image compression function for mobile optimization
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Calculate new dimensions (max 800px)
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file); // Fallback to original file
+            }
+          }, 'image/jpeg', 0.8);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !user) return;
@@ -205,19 +256,40 @@ export default function Profile() {
     setAvatarLoading(true);
     
     try {
-      console.log('=== IMAGE UPLOAD DEBUG ===');
+      console.log('=== MOBILE IMAGE UPLOAD DEBUG ===');
       console.log('User ID:', user.id);
       console.log('File:', file.name, file.size, file.type);
       
+      // File size validation for mobile (max 5MB)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error('Image too large. Please choose an image under 5MB.');
+        return;
+      }
+      
+      // File type validation
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file.');
+        return;
+      }
+      
+      // Compress image for mobile
+      let processedFile = file;
+      if (file.size > 1024 * 1024) { // If larger than 1MB, compress
+        processedFile = await compressImage(file);
+        console.log('Compressed file size:', processedFile.size);
+      }
+      
       // Upload to Supabase Storage
-      const fileExt = file.name.split('.').pop();
+      const fileExt = processedFile.name.split('.').pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
       
       console.log('Generated filename:', fileName);
+      console.log('Final file size:', processedFile.size);
       
       const { error: uploadError, data } = await supabase.storage
         .from('avatars')
-        .upload(fileName, file, {
+        .upload(fileName, processedFile, {
           cacheControl: '3600',
           upsert: false
         });
@@ -653,6 +725,7 @@ export default function Profile() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        capture="environment"
         onChange={handleImageUpload}
         className="hidden"
       />
@@ -722,9 +795,16 @@ export default function Profile() {
                    <button
                      onClick={() => fileInputRef.current?.click()}
                      disabled={avatarLoading}
-                     className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                     className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                    >
-                     Change
+                     {avatarLoading ? (
+                       <>
+                         <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin"></div>
+                         <span>Uploading...</span>
+                       </>
+                     ) : (
+                       <span>Change</span>
+                     )}
                    </button>
                    {currentUser?.avatar_url && (
                      <button
@@ -747,6 +827,7 @@ export default function Profile() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        capture="environment"
         onChange={handleImageUpload}
         className="hidden"
       />
@@ -756,7 +837,7 @@ export default function Profile() {
          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mb-12">
             <div className="text-center md:text-left flex-1">
                <h1 className="text-4xl md:text-5xl font-bold flex items-center justify-center md:justify-start gap-3 mb-3">
-                  {getDisplayProfile()?.full_name || getDisplayProfile()?.name || 'Unknown User'}
+                  {getDisplayProfile()?.full_name || getDisplayProfile()?.name || getDisplayProfile()?.email?.split('@')[0] || 'Swapill Member'}
                   <ShieldCheck className="w-6 h-6 md:w-7 md:h-7 text-blue-400" />
                </h1>
                <p className="text-slate-300 font-medium text-lg mb-4">Expertise Swapper</p>

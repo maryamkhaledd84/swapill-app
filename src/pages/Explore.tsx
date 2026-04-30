@@ -289,6 +289,41 @@ export default function Explore() {
           console.log('Profile ID:', profile.id);
           console.log('Profile name:', profile.full_name);
           
+          // Get user metadata from auth to access raw_user_meta_data
+          let authMetadata = null;
+          try {
+            const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.user_id);
+            authMetadata = authUser?.user_metadata;
+            console.log('User Metadata:', authMetadata); // Verification: Log metadata during development
+          } catch (error) {
+            console.log('Could not fetch auth metadata for user:', profile.user_id);
+          }
+          
+          // Display logic: prioritize profile.full_name || auth metadata || 'Member'
+          const displayName = profile.full_name || authMetadata?.full_name || profile.email?.split('@')[0] || 'Member';
+          
+          // Sync to Profiles: If metadata has name but profiles doesn't, update profiles table
+          if (!profile.full_name && authMetadata?.full_name) {
+            console.log('Syncing name from auth metadata to profiles table for user:', profile.user_id);
+            try {
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ 
+                  full_name: authMetadata.full_name,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', profile.id);
+                
+              if (updateError) {
+                console.error('Error syncing name to profiles table:', updateError);
+              } else {
+                console.log('Successfully synced name from auth metadata to profiles table');
+              }
+            } catch (error) {
+              console.error('Unexpected error syncing name:', error);
+            }
+          }
+          
           // Fetch skills for this profile
           const { data: userSkills, error: skillsError } = await supabase
             .from('skills')
@@ -314,10 +349,11 @@ export default function Explore() {
                 icon: Search
               };
           
+          // Use the displayName that was calculated with proper priority logic
           return {
             id: profile.id,
-            name: profile.full_name || 'Unknown User',
-            initials: (profile.full_name || 'Unknown User').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+            name: displayName,
+            initials: displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
             avatar_url: profile.avatar_url, // Include avatar_url from profiles table
             useAvatar: false,
             gradient: "from-blue-500 to-indigo-600",
@@ -341,6 +377,103 @@ export default function Explore() {
     };
 
     fetchRealUsers();
+
+    // Sync all users with NULL full_name from auth metadata
+    const syncAllNullProfiles = async () => {
+      try {
+        console.log('=== SYNCING NULL PROFILES ===');
+        
+        // Get all profiles with NULL or empty full_name
+        const { data: nullProfiles, error: nullError } = await supabase
+          .from('profiles')
+          .select('id, user_id, full_name, email')
+          .is('full_name', null);
+
+        if (nullError) {
+          console.error('Error fetching NULL profiles:', nullError);
+          return;
+        }
+
+        if (!nullProfiles || nullProfiles.length === 0) {
+          console.log('No NULL profiles found to sync');
+          return;
+        }
+
+        console.log(`Found ${nullProfiles.length} profiles with NULL full_name, syncing...`);
+
+        // Sync each profile with auth metadata
+        for (const profile of nullProfiles) {
+          try {
+            const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.user_id);
+            
+            if (authUser?.user_metadata?.full_name) {
+              console.log(`Syncing user ${profile.user_id}: ${authUser.user_metadata.full_name}`);
+              
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ 
+                  full_name: authUser.user_metadata.full_name,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', profile.id);
+
+              if (updateError) {
+                console.error(`Error updating profile ${profile.id}:`, updateError);
+              } else {
+                console.log(`Successfully synced profile ${profile.id}`);
+              }
+            } else {
+              console.log(`No auth metadata found for user ${profile.user_id}`);
+            }
+          } catch (error) {
+            console.error(`Error syncing profile ${profile.id}:`, error);
+          }
+        }
+
+        console.log('=== SYNC COMPLETED ===');
+      } catch (error) {
+        console.error('Error in syncAllNullProfiles:', error);
+      }
+    };
+
+    // Run sync on page load
+    syncAllNullProfiles();
+
+    // Sync script: Check if logged-in user's full_name is missing and update it
+    const syncCurrentUserProfile = async () => {
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (!currentUser) return;
+
+        // Check if current user's profile has missing full_name
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', currentUser.id)
+          .single();
+
+        if (!userProfile?.full_name && currentUser.user_metadata?.full_name) {
+          console.log('Syncing current user name from auth metadata...');
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+              full_name: currentUser.user_metadata.full_name,
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', currentUser.id);
+
+          if (!updateError) {
+            console.log('Successfully synced current user name');
+            toast.success('Your profile has been updated!');
+            fetchRealUsers(); // Refresh the users list
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing user profile:', error);
+      }
+    };
+
+    syncCurrentUserProfile();
 
     // Set up Supabase realtime for auto-refresh
     const channel = supabase
@@ -739,8 +872,8 @@ export default function Explore() {
                     <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-slate-950" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1">{user.name || 'Unknown User'}</h3>
-                    <div className="flex items-center gap-1 text-sm text-slate-400">
+                    <h3 className="text-lg font-semibold text-white mb-1 truncate">{user.name || 'Unknown User'}</h3>
+                    <div className="flex items-center gap-1 text-sm text-slate-400 flex-wrap">
                       {user.rating > 0 ? (
                         <span> {user.rating.toFixed(1)}</span>
                       ) : (
@@ -754,7 +887,7 @@ export default function Explore() {
 
                 {/* Bio */}
                 <div className="mb-4">
-                  <p className="text-sm text-slate-300 leading-relaxed">{user.bio || 'No bio available'}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed line-clamp-3">{user.bio || 'No bio available'}</p>
                 </div>
 
                 {/* Top Skill */}
@@ -764,9 +897,9 @@ export default function Explore() {
                       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-violet-500/20 flex items-center justify-center">
                         <topSkill.icon className="w-4 h-4 text-purple-400" />
                       </div>
-                      <div>
-                        <h4 className="text-white font-medium">{topSkill.title}</h4>
-                        <p className="text-xs text-slate-500 capitalize">{topSkill.category}</p>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-white font-medium truncate">{topSkill.title}</h4>
+                        <p className="text-xs text-slate-500 capitalize truncate">{topSkill.category}</p>
                       </div>
                     </div>
                     
@@ -793,7 +926,7 @@ export default function Explore() {
                 {currentUser && (user as any).id === currentUser.id ? (
                   <button
                     onClick={() => navigate('/profile')}
-                    className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2"
+                    className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-sm md:text-base min-h-[44px] md:min-h-[48px]"
                   >
                     <User className="w-4 h-4" />
                     <span>View Profile</span>
@@ -801,7 +934,7 @@ export default function Explore() {
                 ) : (
                   <button
                     onClick={() => navigate(`/profile/${(user as any).id}`)}
-                    className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2"
+                    className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all duration-300 flex items-center justify-center gap-2 text-sm md:text-base min-h-[44px] md:min-h-[48px]"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>Request Swap</span>
