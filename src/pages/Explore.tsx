@@ -265,7 +265,8 @@ export default function Explore() {
         
         const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('*');
+          .select('*')
+          .order('created_at', { ascending: true });
 
         console.log('Profiles fetch result:', { profiles, profilesError });
 
@@ -581,7 +582,7 @@ export default function Explore() {
     
     if (activeCategory !== 'all') {
       filtered = allUsers.filter(user => {
-        // Handle real users with skills array (object format)
+        // Strict filtering: Only show users who have the category in their skills array
         if (user.skills && Array.isArray(user.skills)) {
           return user.skills.some((skill: any) => {
             // Check if skill is object with category property
@@ -648,8 +649,8 @@ export default function Explore() {
             return false;
           });
         }
-        // Handle mock users with topSkill.category
-        return user.topSkill?.category === activeCategory;
+        // NO FALLBACK TO TOPSKILL - Only show if they actually have the skill in their array
+        return false;
       });
     }
     
