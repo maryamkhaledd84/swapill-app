@@ -47,6 +47,39 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    // === DEEP CONNECTION SYNC: Schema Discovery ===
+    const discoverSchema = async () => {
+      try {
+        console.log('=== SCHEMA DISCOVERY ===');
+        console.log('Environment Variables:');
+        console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+        console.log('VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? 'SET' : 'UNDEFINED');
+        
+        // Fetch just ONE row from profiles to see exact column names
+        const { data, error } = await supabase.from('profiles').select('*').limit(1);
+        
+        if (error) {
+          console.error('Schema Discovery Error:', error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          console.log('=== PROFILE SCHEMA TRUTH ===');
+          console.log('Sample profile row:');
+          console.dir(data[0], { depth: null });
+          console.log('Available columns:', Object.keys(data[0]));
+          console.log('=== END SCHEMA DISCOVERY ===');
+        } else {
+          console.log('No profiles found in database');
+        }
+      } catch (error) {
+        console.error('Schema discovery failed:', error);
+      }
+    };
+
+    // Run schema discovery immediately
+    discoverSchema();
+
     // Initialize auth state
     const initializeAuth = async () => {
       try {
@@ -103,8 +136,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         // Check if user's profile has NULL full_name
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('id, full_name, user_id')
-          .eq('user_id', user.id)
+          .select('id, full_name')
+          .eq('id', user.id)
           .single();
 
         if (profileError) {

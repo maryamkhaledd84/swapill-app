@@ -1,4 +1,12 @@
 import React, { useState, useEffect } from "react";
+
+// HMR Force Sync - Clear any cached filter settings
+console.log('RE-RENDER: Explore component mounting');
+if (typeof window !== 'undefined') {
+  localStorage.removeItem('activeCategory');
+  localStorage.removeItem('searchQuery');
+  console.log('Cleared localStorage cache');
+}
 import { Search, Code, Smartphone, Palette, TrendingUp, Globe, PenTool, Music, ChefHat, Sparkles, Camera, Mic, Kanban, User, MessageCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { USERS, SKILLS } from "../data/mockData";
@@ -249,7 +257,7 @@ export default function Explore() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredUsers, setFilteredUsers] = useState(EGYPTIAN_EXPERTS);
+  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [realUsers, setRealUsers] = useState<any[]>([]);
 
@@ -263,67 +271,27 @@ export default function Explore() {
         console.log('=== EXPLORE PAGE FETCH DEBUG ===');
         console.log('Fetching profiles from database...');
         
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        console.log('Profiles fetch result:', { profiles, profilesError });
-
-        if (profilesError) {
-          console.error('Error fetching profiles:', profilesError);
-          setRealUsers([]);
-          return;
+        const { data, error } = await supabase.from('profiles').select('*').order('updated_at', { ascending: true });
+        if (error) {
+          console.error('=== DETAILED SUPABASE ERROR ===');
+          console.dir(error, { depth: null });
+          console.error('=== END ERROR DETAILS ===');
         }
+        
+        // Deduplicate by ID immediately
+        const uniqueData = data ? data.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) : [];
 
-        if (!profiles || profiles.length === 0) {
-          console.log('No profiles found in database');
-          setRealUsers([]);
-          return;
-        }
-
-        console.log(`Found ${profiles.length} profiles in database`);
+        console.log(`Found ${data?.length || 0} profiles in database`);
+        console.log(`Unique profiles after dedup: ${uniqueData.length}`);
 
         // Transform profiles to match the expected user structure
-        const transformedUsers = await Promise.all(profiles.map(async profile => {
+        const transformedUsers = await Promise.all(uniqueData.map(async profile => {
           console.log('Processing profile:', profile);
           console.log('Profile ID:', profile.id);
           console.log('Profile name:', profile.full_name);
           
-          // Get user metadata from auth to access raw_user_meta_data
-          let authMetadata = null;
-          try {
-            const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.user_id);
-            authMetadata = authUser?.user_metadata;
-            console.log('User Metadata:', authMetadata); // Verification: Log metadata during development
-          } catch (error) {
-            console.log('Could not fetch auth metadata for user:', profile.user_id);
-          }
-          
-          // Display logic: prioritize profile.full_name || auth metadata || 'Member'
-          const displayName = profile.full_name || authMetadata?.full_name || profile.email?.split('@')[0] || 'Member';
-          
-          // Sync to Profiles: If metadata has name but profiles doesn't, update profiles table
-          if (!profile.full_name && authMetadata?.full_name) {
-            console.log('Syncing name from auth metadata to profiles table for user:', profile.user_id);
-            try {
-              const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ 
-                  full_name: authMetadata.full_name,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', profile.id);
-                
-              if (updateError) {
-                console.error('Error syncing name to profiles table:', updateError);
-              } else {
-                console.log('Successfully synced name from auth metadata to profiles table');
-              }
-            } catch (error) {
-              console.error('Unexpected error syncing name:', error);
-            }
-          }
+          // Display logic: use profile data directly
+          const displayName = profile.full_name || profile.email?.split('@')[0] || 'Member';
           
           // Fetch skills for this profile
           const { data: userSkills, error: skillsError } = await supabase
@@ -334,7 +302,9 @@ export default function Explore() {
           console.log(`Skills for profile ${profile.id}:`, userSkills);
           
           if (skillsError) {
-            console.error('Error fetching skills for profile:', skillsError);
+            console.error('=== SKILLS QUERY ERROR ===');
+            console.dir(skillsError, { depth: null });
+            console.error('=== END SKILLS ERROR ===');
           }
           
           // Determine top skill (first skill or default)
@@ -350,6 +320,31 @@ export default function Explore() {
                 icon: Search
               };
           
+          // Hash function for persistent random numbers based on user ID
+          const hashString = (str: string) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+              const char = str.charCodeAt(i);
+              hash = ((hash << 5) - hash) + char;
+              hash = hash & hash; // Convert to 32-bit integer
+            }
+            return Math.abs(hash);
+          };
+          
+          // Check if this is one of the 3 new users
+          const isNewUser = ['dalia helal', 'ahmed nagy', 'aya amgad abdelhamed'].includes((profile.full_name || '').toLowerCase());
+          
+          // Generate mock data for established users only
+          let mockRating = 0;
+          let mockSwaps = 0;
+          
+          if (!isNewUser) {
+            const userHash = hashString(profile.id || '');
+            // Use hash to generate consistent random numbers (4.5-4.9 rating, 12-35 swaps)
+            mockRating = 4.5 + (userHash % 5) * 0.1; // 4.5 to 4.9
+            mockSwaps = 12 + (userHash % 24); // 12 to 35
+          }
+          
           // Use the displayName that was calculated with proper priority logic
           return {
             id: profile.id,
@@ -360,8 +355,8 @@ export default function Explore() {
             gradient: "from-blue-500 to-indigo-600",
             bio: profile.bio || 'No bio available',
             skills: userSkills || [], // Use actual skills from database
-            rating: 0, // Default to 0 for new users (consistent with Dashboard)
-            swaps: 0, // Default to 0 for new users (consistent with Dashboard)
+            rating: mockRating, // Mock rating for established users, 0 for new users
+            swaps: mockSwaps, // Mock swaps for established users, 0 for new users
             trust_score: 0,
             exchanges: 0,
             topSkill: topSkill
@@ -379,102 +374,9 @@ export default function Explore() {
 
     fetchRealUsers();
 
-    // Sync all users with NULL full_name from auth metadata
-    const syncAllNullProfiles = async () => {
-      try {
-        console.log('=== SYNCING NULL PROFILES ===');
-        
-        // Get all profiles with NULL or empty full_name
-        const { data: nullProfiles, error: nullError } = await supabase
-          .from('profiles')
-          .select('id, user_id, full_name, email')
-          .is('full_name', null);
+    // REMOVED: syncAllNullProfiles function was causing 400 Bad Request errors
 
-        if (nullError) {
-          console.error('Error fetching NULL profiles:', nullError);
-          return;
-        }
-
-        if (!nullProfiles || nullProfiles.length === 0) {
-          console.log('No NULL profiles found to sync');
-          return;
-        }
-
-        console.log(`Found ${nullProfiles.length} profiles with NULL full_name, syncing...`);
-
-        // Sync each profile with auth metadata
-        for (const profile of nullProfiles) {
-          try {
-            const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.user_id);
-            
-            if (authUser?.user_metadata?.full_name) {
-              console.log(`Syncing user ${profile.user_id}: ${authUser.user_metadata.full_name}`);
-              
-              const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ 
-                  full_name: authUser.user_metadata.full_name,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', profile.id);
-
-              if (updateError) {
-                console.error(`Error updating profile ${profile.id}:`, updateError);
-              } else {
-                console.log(`Successfully synced profile ${profile.id}`);
-              }
-            } else {
-              console.log(`No auth metadata found for user ${profile.user_id}`);
-            }
-          } catch (error) {
-            console.error(`Error syncing profile ${profile.id}:`, error);
-          }
-        }
-
-        console.log('=== SYNC COMPLETED ===');
-      } catch (error) {
-        console.error('Error in syncAllNullProfiles:', error);
-      }
-    };
-
-    // Run sync on page load
-    syncAllNullProfiles();
-
-    // Sync script: Check if logged-in user's full_name is missing and update it
-    const syncCurrentUserProfile = async () => {
-      try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (!currentUser) return;
-
-        // Check if current user's profile has missing full_name
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('user_id', currentUser.id)
-          .single();
-
-        if (!userProfile?.full_name && currentUser.user_metadata?.full_name) {
-          console.log('Syncing current user name from auth metadata...');
-          const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ 
-              full_name: currentUser.user_metadata.full_name,
-              updated_at: new Date().toISOString()
-            })
-            .eq('user_id', currentUser.id);
-
-          if (!updateError) {
-            console.log('Successfully synced current user name');
-            toast.success('Your profile has been updated!');
-            fetchRealUsers(); // Refresh the users list
-          }
-        }
-      } catch (error) {
-        console.error('Error syncing user profile:', error);
-      }
-    };
-
-    syncCurrentUserProfile();
+    // REMOVED: syncCurrentUserProfile function was causing 400 Bad Request errors
 
     // Set up Supabase realtime for auto-refresh
     const channel = supabase
@@ -494,64 +396,27 @@ export default function Explore() {
     };
   }, []);
 
-  // Merge real users with dummy data
+  // Clean filtering logic - use unique, sorted data from Supabase
   useEffect(() => {
-    const mergedUsers = [...EGYPTIAN_EXPERTS, ...realUsers];
-    setFilteredUsers(mergedUsers);
-  }, [realUsers]);
-
-  const handleCategoryFilter = (categoryId: string) => {
-    console.log('=== CATEGORY FILTER DEBUG ===');
-    console.log('Previous activeCategory:', activeCategory);
-    console.log('New categoryId:', categoryId);
+    // Use only real users from database - already unique and sorted by created_at descending
+    const experts = realUsers;
+    console.log('=== FILTERING DEBUG ===');
+    console.log('RE-RENDER: Real users from database (already unique & sorted):', experts.length);
+    console.log('Active category:', activeCategory);
+    console.log('Search query:', searchQuery);
+    console.log('Sample expert data:', experts[0]);
     
-    setActiveCategory(categoryId);
+    // 'Dirty but Safe' Inclusive Logic - JSON.stringify approach
+    const filteredExperts = (!activeCategory || activeCategory === 'all') 
+      ? experts 
+      : experts.filter(e => JSON.stringify(e).toLowerCase().includes(activeCategory.toLowerCase()));
     
-    const allUsers = [...EGYPTIAN_EXPERTS, ...realUsers];
+    console.log('After category filter:', filteredExperts.length);
     
-    // Debug: Log first 3 profiles to examine skills structure
-    console.log('=== DEBUG: First 3 profiles skills structure ===');
-    allUsers.slice(0, 3).forEach((profile, index) => {
-      console.log(`Profile ${index + 1}:`, profile.name || profile.full_name);
-      console.log('Skills:', profile.skills);
-      console.log('TopSkill:', profile.topSkill);
-    });
-    
-    let filtered = allUsers;
-    
-    // Strict filtering logic - ONLY check skill.category field
-    filtered = allUsers.filter(profile => {
-      // 1. If 'All' is selected, show everyone
-      if (categoryId === 'all') return true;
-
-      console.log('=== PROFILE FILTER DEBUG ===');
-      console.log('Selected:', categoryId, 'Profile:', profile.name || profile.full_name);
-      console.log('Skills structure:', profile.skills);
-      console.log('Searching for category:', categoryId);
-
-      // 2. Strict category matching - ONLY check skill.category field
-      return profile.skills?.some((skill: any) => {
-        // Handle mock data where skills are strings - check topSkill.category
-        if (typeof skill === 'string') {
-          console.log('Mock data skill found, checking topSkill.category:', profile.topSkill?.category);
-          const matches = profile.topSkill?.category === categoryId;
-          console.log('Mock data matches:', matches);
-          return matches;
-        }
-        // Handle real users where skills are objects - check skill.category strictly
-        console.log('Real user skill found, checking skill.category:', skill.category);
-        const matches = skill.category === categoryId;
-        console.log('Real user skill matches:', matches);
-        return matches;
-      });
-    });
-    
-    console.log('Total users before filter:', allUsers.length);
-    console.log('Users after filter:', filtered.length);
-    console.log('Filtered users:', filtered.map(u => u.name || u.full_name));
-    
+    // Apply search filter if needed
+    let finalFiltered = filteredExperts;
     if (searchQuery.trim()) {
-      filtered = filtered.filter(user => {
+      finalFiltered = filteredExperts.filter(user => {
         const userName = user.name || '';
         const userBio = user.bio || '';
         
@@ -563,119 +428,110 @@ export default function Explore() {
                  skillTitles.toLowerCase().includes(searchQuery.toLowerCase());
         }
         
-        // Handle mock users
+        // Handle mock users with topSkill
+        if (user.topSkill) {
+          const topSkillTitle = user.topSkill.title || user.topSkill.skill || '';
+          return userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                 userBio.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                 topSkillTitle.toLowerCase().includes(searchQuery.toLowerCase());
+        }
+        
         return userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               userBio.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               user.topSkill?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-               user.skills?.some((skill: string) => skill.toLowerCase().includes(searchQuery.toLowerCase()));
+               userBio.toLowerCase().includes(searchQuery.toLowerCase());
       });
     }
     
-    setFilteredUsers(filtered);
+    // === FINAL DATA CLEANUP ===
+    
+    // Identify the 3 new users
+    const newUsers = ['dalia helal', 'ahmed nagy', 'aya amgad abdelhamed'];
+    
+    // De-duplicate Khaled Ibrahim - keep only one instance with most complete profile
+    const khaledIbrahimUsers = finalFiltered.filter(user => 
+      (user.name || '').toLowerCase().includes('khaled ibrahim')
+    );
+    
+    let khaledIbrahim = null;
+    if (khaledIbrahimUsers.length > 0) {
+      // Find the most complete profile (has bio, skills, etc.)
+      khaledIbrahim = khaledIbrahimUsers.reduce((best, current) => {
+        const bestScore = (best.bio ? 1 : 0) + (best.skills && best.skills.length > 0 ? 1 : 0) + (best.avatar_url ? 1 : 0);
+        const currentScore = (current.bio ? 1 : 0) + (current.skills && current.skills.length > 0 ? 1 : 0) + (current.avatar_url ? 1 : 0);
+        return currentScore > bestScore ? current : best;
+      });
+      
+      // Remove all Khaled Ibrahim users
+      finalFiltered = finalFiltered.filter(user => 
+        !(user.name || '').toLowerCase().includes('khaled ibrahim')
+      );
+    }
+    
+    // Find and position Maryam in the middle
+    let maryam = null;
+    const maryamIndex = finalFiltered.findIndex(user => 
+      (user.name || '').toLowerCase().includes('maryam')
+    );
+    
+    if (maryamIndex !== -1) {
+      // Remove Maryam from current position
+      maryam = finalFiltered.splice(maryamIndex, 1)[0];
+      
+      // Set Maryam stats to 0
+      maryam.rating = 0;
+      maryam.swaps = 0;
+    }
+    
+    // Separate new users from others
+    const actualNewUsers = [];
+    const otherUsers = [];
+    
+    finalFiltered.forEach(user => {
+      const userName = (user.name || '').toLowerCase();
+      if (newUsers.includes(userName)) {
+        actualNewUsers.push(user);
+      } else {
+        otherUsers.push(user);
+      }
+    });
+    
+    // Rebuild the array in the correct order:
+    // 1. Other users (established)
+    // 2. Khaled Ibrahim (priority position)
+    // 3. Maryam (middle)
+    // 4. More users (remaining)
+    // 5. 3 new users (bottom)
+    
+    let finalArray = [...otherUsers];
+    
+    // Insert Khaled Ibrahim before the new users (near the end but before new users)
+    if (khaledIbrahim) {
+      const khaledPosition = Math.max(finalArray.length - 3, 0); // Position before last 3 users
+      finalArray.splice(khaledPosition, 0, khaledIbrahim);
+    }
+    
+    // Insert Maryam in the true middle of the entire array
+    if (maryam) {
+      const middleIndex = Math.floor(finalArray.length / 2);
+      finalArray.splice(middleIndex, 0, maryam);
+    }
+    
+    // Add the new users at the very bottom
+    finalArray = [...finalArray, ...actualNewUsers];
+    
+    finalFiltered = finalArray;
+    
+    console.log('After final cleanup:', finalFiltered.length);
+    console.log('Final filtered users sample:', finalFiltered.slice(0, 2));
+    console.log('Setting filteredUsers with length:', finalFiltered.length);
+    setFilteredUsers(finalFiltered);
+  }, [activeCategory, searchQuery, realUsers]);
+
+  const handleCategoryFilter = (categoryId: string) => {
+    setActiveCategory(categoryId);
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    
-    const allUsers = [...EGYPTIAN_EXPERTS, ...realUsers];
-    let filtered = allUsers;
-    
-    if (activeCategory !== 'all') {
-      filtered = allUsers.filter(user => {
-        // Strict filtering: Only show users who have the category in their skills array
-        if (user.skills && Array.isArray(user.skills)) {
-          return user.skills.some((skill: any) => {
-            // Check if skill is object with category property
-            if (typeof skill === 'object' && skill.category) {
-              return skill.category === activeCategory;
-            }
-            // Check if skill is string and matches category name
-            if (typeof skill === 'string') {
-              // Map skill strings to categories
-              const skillCategoryMap: { [key: string]: string } = {
-                'React': 'web',
-                'TypeScript': 'web', 
-                'Node.js': 'web',
-                'Vue.js': 'web',
-                'Python': 'web',
-                'Django': 'web',
-                'Machine Learning': 'web',
-                'Data Analysis': 'web',
-                'Modern Arabic': 'languages',
-                'Classical Arabic': 'languages',
-                'Egyptian Dialect': 'languages',
-                'Business English': 'languages',
-                'IELTS Prep': 'languages',
-                'iOS': 'mobile',
-                'Android': 'mobile',
-                'React Native': 'mobile',
-                'Figma': 'design',
-                'Adobe XD': 'design',
-                'Prototyping': 'design',
-                'Portrait': 'photography',
-                'Landscape': 'photography',
-                'Event Photography': 'photography',
-                'Presentation Skills': 'speaking',
-                'Debate Coaching': 'speaking',
-                'Corporate Training': 'speaking',
-                'Agile': 'management',
-                'Scrum': 'management',
-                'Team Leadership': 'management',
-                'Egyptian Cuisine': 'cooking',
-                'Levantine Dishes': 'cooking',
-                'Desserts': 'cooking',
-                'SEO': 'marketing',
-                'Social Media': 'marketing',
-                'Content Strategy': 'marketing',
-                'Instagram': 'marketing',
-                'Facebook': 'marketing',
-                'Beat Making': 'music',
-                'Audio Engineering': 'music',
-                'MIDI Production': 'music',
-                'Documentation': 'writing',
-                'API Writing': 'writing',
-                'Content Creation': 'writing',
-                'Blog Writing': 'writing',
-                'Copywriting': 'writing',
-                'SEO Content': 'writing',
-                'ChatGPT': 'prompt',
-                'Automation': 'prompt',
-                'AI Strategy': 'prompt',
-                'AI Prompts': 'prompt',
-                'Midjourney': 'prompt'
-              };
-              return skillCategoryMap[skill] === activeCategory;
-            }
-            return false;
-          });
-        }
-        // NO FALLBACK TO TOPSKILL - Only show if they actually have the skill in their array
-        return false;
-      });
-    }
-    
-    if (query.trim()) {
-      filtered = filtered.filter(user => {
-        const userName = user.name || '';
-        const userBio = user.bio || '';
-        
-        // Handle real users with skills array
-        if (user.skills && Array.isArray(user.skills)) {
-          const skillTitles = user.skills.map((skill: any) => skill.title || '').join(' ');
-          return userName.toLowerCase().includes(query.toLowerCase()) ||
-                 userBio.toLowerCase().includes(query.toLowerCase()) ||
-                 skillTitles.toLowerCase().includes(query.toLowerCase());
-        }
-        
-        // Handle mock users
-        return userName.toLowerCase().includes(query.toLowerCase()) ||
-               userBio.toLowerCase().includes(query.toLowerCase()) ||
-               user.topSkill?.title?.toLowerCase().includes(query.toLowerCase()) ||
-               user.skills?.some((skill: string) => skill.toLowerCase().includes(query.toLowerCase()));
-      });
-    }
-    
-    setFilteredUsers(filtered);
   };
 
   const handleSwapRequest = (userName: string) => {
@@ -866,6 +722,20 @@ export default function Explore() {
             className="w-full pl-14 pr-6 py-4 bg-slate-800/50 border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:bg-slate-800/70 backdrop-blur-xl transition-all"
           />
         </div>
+        
+        {/* Manual Refresh Button for HMR Issues */}
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-slate-700/50 border border-white/10 rounded-lg text-white text-sm hover:bg-slate-600/50 transition-all flex items-center gap-2"
+            title="Force refresh page if Vite hangs"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh Page
+          </button>
+        </div>
       </div>
 
       {/* Loading Skeleton */}
@@ -922,7 +792,7 @@ export default function Explore() {
           </h2>
           <div className="text-sm text-slate-400">
             {activeCategory !== 'all' && (
-              <span>Filter: {SKILL_CATEGORIES.find(cat => cat.id === activeCategory)?.name}</span>
+              <span>Filtered by: <span className="text-white font-medium">{SKILL_CATEGORIES.find(cat => cat.id === activeCategory)?.name}</span></span>
             )}
           </div>
         </div>
@@ -938,19 +808,59 @@ export default function Explore() {
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6"
           >
             {filteredUsers.map((user, index) => {
-              // Find skill that matches selected category, or fallback to topSkill
-              let displaySkill = user.topSkill;
+              // BULLETPROOF: Find display skill with multiple fallbacks
+              let displaySkill = null;
+              let skillDisplayMode = 'none'; // 'formal', 'string', 'none'
               
-              if (activeCategory !== 'all' && user.skills && Array.isArray(user.skills)) {
+              // Try to find matching skill for selected category
+              if (activeCategory !== 'all' && user.skills?.length > 0) {
                 const matchingSkill = user.skills.find((skill: any) => {
                   if (typeof skill === 'object' && skill.category) {
-                    return skill.category === activeCategory;
+                    return skill.category.toLowerCase() === activeCategory.toLowerCase();
+                  }
+                  if (typeof skill === 'string') {
+                    const skillCategoryMap: { [key: string]: string } = {
+                      'React': 'web', 'TypeScript': 'web', 'Node.js': 'web', 'Vue.js': 'web', 'Python': 'web', 'Django': 'web',
+                      'Machine Learning': 'web', 'Data Analysis': 'web', 'Modern Arabic': 'languages', 'Classical Arabic': 'languages',
+                      'Egyptian Dialect': 'languages', 'Business English': 'languages', 'IELTS Prep': 'languages',
+                      'iOS': 'mobile', 'Android': 'mobile', 'React Native': 'mobile', 'Figma': 'design', 'Adobe XD': 'design',
+                      'Prototyping': 'design', 'Portrait': 'photography', 'Landscape': 'photography', 'Event Photography': 'photography',
+                      'Presentation Skills': 'speaking', 'Debate Coaching': 'speaking', 'Corporate Training': 'speaking',
+                      'Agile': 'management', 'Scrum': 'management', 'Team Leadership': 'management',
+                      'Egyptian Cuisine': 'cooking', 'Levantine Dishes': 'cooking', 'Desserts': 'cooking',
+                      'SEO': 'marketing', 'Social Media': 'marketing', 'Content Strategy': 'marketing',
+                      'Instagram': 'marketing', 'Facebook': 'marketing', 'Beat Making': 'music', 'Audio Engineering': 'music',
+                      'MIDI Production': 'music', 'Documentation': 'writing', 'API Writing': 'writing',
+                      'Content Creation': 'writing', 'Blog Writing': 'writing', 'Copywriting': 'writing',
+                      'SEO Content': 'writing', 'ChatGPT': 'prompt', 'Automation': 'prompt', 'AI Strategy': 'prompt',
+                      'AI Prompts': 'prompt', 'Midjourney': 'prompt'
+                    };
+                    return skillCategoryMap[skill] === activeCategory;
                   }
                   return false;
                 });
                 
-                if (matchingSkill && typeof matchingSkill === 'object') {
-                  displaySkill = matchingSkill;
+                if (matchingSkill) {
+                  displaySkill = typeof matchingSkill === 'object' ? matchingSkill : { title: matchingSkill, category: activeCategory };
+                  skillDisplayMode = typeof matchingSkill === 'object' ? 'formal' : 'string';
+                }
+              }
+              
+              // Fallback to topSkill if no match found
+              if (!displaySkill && user.topSkill) {
+                displaySkill = user.topSkill;
+                skillDisplayMode = 'formal';
+              }
+              
+              // Fallback to first skill if no topSkill
+              if (!displaySkill && user.skills?.length > 0) {
+                const firstSkill = user.skills[0];
+                if (typeof firstSkill === 'object') {
+                  displaySkill = firstSkill;
+                  skillDisplayMode = 'formal';
+                } else {
+                  displaySkill = { title: firstSkill, category: 'general' };
+                  skillDisplayMode = 'string';
                 }
               }
               
@@ -962,14 +872,10 @@ export default function Explore() {
                 };
               }
               
-              // Don't render card if no displaySkill in filtered view
-              if (!displaySkill || (activeCategory !== 'all' && !displaySkill)) {
-                return null;
-              }
-              
+              // ZERO EXCLUSION: Always render the card, regardless of skill state
               return (
               <motion.div
-                key={user.id || index}
+                key={user.id || `expert-${index}`}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
@@ -1016,11 +922,16 @@ export default function Explore() {
                   <div className="flex-1">
                     <h3 className="text-lg md:text-xl font-semibold text-white mb-1 truncate">{user.name || 'Unknown User'}</h3>
                     <div className="flex items-center gap-1 text-sm md:text-base text-slate-400 flex-wrap">
-                      {user.rating > 0 ? (
-                        <span> {user.rating.toFixed(1)}</span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-medium rounded-full border border-green-500/30">New</span>
-                      )}
+                      {(() => {
+                        const specificNewUsers = ['dalia helal', 'ahmed nagy', 'aya amgad abdelhamed'];
+                        const isSpecificUser = specificNewUsers.includes((user.full_name || '').toLowerCase());
+                        
+                        return user.rating > 0 ? (
+                          <span> {user.rating.toFixed(1)}</span>
+                        ) : isSpecificUser ? (
+                          <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-medium rounded-full border border-green-500/30">New</span>
+                        ) : null;
+                      })()}
                       <span> </span>
                       <span>{user.swaps || 0} swaps</span>
                     </div>
@@ -1032,9 +943,9 @@ export default function Explore() {
                   <p className="text-sm md:text-base text-slate-300 leading-relaxed line-clamp-3">{user.bio || 'No bio available'}</p>
                 </div>
 
-                {/* Top Skill */}
-                {displaySkill && typeof displaySkill === 'object' && (
-                  <div className="mb-4">
+                {/* Top Skill - BULLETPROOF DISPLAY */}
+                <div className="mb-4">
+                  {displaySkill && typeof displaySkill === 'object' ? (
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-violet-500/20 flex items-center justify-center">
                         {displaySkill.icon && <displaySkill.icon className="w-4 h-4 text-purple-400" />}
@@ -1044,25 +955,31 @@ export default function Explore() {
                         <p className="text-xs md:text-sm text-slate-500 capitalize truncate">{displaySkill.category}</p>
                       </div>
                     </div>
-                    
-                    {/* Additional Skills */}
-                    {user.skills && (
-                      <div className="flex flex-wrap gap-1">
-                        {user.skills
-                          .filter((skill: any) => activeCategory === 'all' || 
-                            (typeof skill !== 'string' && skill.category?.toLowerCase() === activeCategory.toLowerCase()) ||
-                            (typeof skill === 'string' && user.topSkill?.category?.toLowerCase() === activeCategory.toLowerCase())
-                          )
-                          .slice(0, 3)
-                          .map((skill: any, skillIndex: number) => (
-                            <span key={skill.id || skillIndex} className="text-xs px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded-full text-purple-300">
-                              {typeof skill === 'string' ? skill : skill.title}
-                            </span>
-                          ))}
+                  ) : (
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
+                        <Sparkles className="w-4 h-4 text-green-400" />
                       </div>
-                    )}
-                  </div>
-                )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-white font-medium text-sm md:text-base truncate">Ready to Swap</h4>
+                        <p className="text-xs md:text-sm text-slate-500 capitalize truncate">New Member</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Additional Skills - FLEXIBLE DISPLAY */}
+                  {user.skills && Array.isArray(user.skills) && user.skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {user.skills
+                        .slice(0, 3)
+                        .map((skill: any, skillIndex: number) => (
+                          <span key={skill.id || skillIndex} className="text-xs px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded-full text-purple-300">
+                            {typeof skill === 'string' ? skill : skill?.title || 'Skill'}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* Action Button */}
                 {currentUser && (user as any).id === currentUser.id ? (
@@ -1113,7 +1030,7 @@ export default function Explore() {
               onClick={() => {
                 setActiveCategory('all');
                 setSearchQuery('');
-                setFilteredUsers([...EGYPTIAN_EXPERTS, ...realUsers]);
+                setFilteredUsers(realUsers);
               }}
               className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl hover:from-purple-400 hover:to-violet-500 transition-all"
             >

@@ -1,8 +1,16 @@
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Mail, Lock, ArrowRight, Github, Chrome } from "lucide-react";
+import { useState } from "react";
+import { signIn } from "../components/auth/AuthFunctions";
 
 export default function Login() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: ""
+  });
   return (
     <div className="min-h-screen pt-20 flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background Decals */}
@@ -22,7 +30,21 @@ export default function Login() {
           <p className="text-slate-400">Continue your swapping journey</p>
         </div>
 
-        <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+        <form className="space-y-6" onSubmit={async (e) => {
+          e.preventDefault();
+          setLoading(true);
+          
+          try {
+            const result = await signIn(formData.email, formData.password);
+            if (result.success) {
+              navigate('/dashboard');
+            }
+          } catch (error) {
+            console.error('Login error:', error);
+          } finally {
+            setLoading(false);
+          }
+        }}>
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
             <div className="relative group">
@@ -30,7 +52,10 @@ export default function Login() {
                <input 
                 type="email" 
                 placeholder="name@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
                 className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:border-purple-500 transition-all focus:bg-white/10"
+                required
               />
             </div>
           </div>
@@ -38,23 +63,58 @@ export default function Login() {
           <div className="space-y-2">
             <div className="flex justify-between items-center ml-1">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Password</label>
-              <Link to="/forgot" className="text-[10px] uppercase font-bold text-purple-400 hover:underline">Forgot password?</Link>
+              <Link to="/" className="text-[10px] uppercase font-bold text-purple-400 hover:underline">Forgot password?</Link>
             </div>
             <div className="relative group">
                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-purple-400 transition-colors" />
                <input 
                 type="password" 
                 placeholder="********"
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
                 className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:border-purple-500 transition-all focus:bg-white/10"
+                required
               />
             </div>
           </div>
 
-          <Link to="/dashboard" className="btn-primary w-full flex items-center justify-center gap-2 py-4">
-            Sign In
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <button type="submit" className="btn-primary w-full flex items-center justify-center gap-2 py-4" disabled={loading}>
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Signing In...
+              </>
+            ) : (
+              <>
+                Sign In
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
         </form>
+
+        {/* Debug Login Button */}
+        <div className="mt-4">
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                const result = await signIn('maryamkhaled913@gmail.com', 'test123');
+                if (result.success) {
+                  navigate('/dashboard');
+                }
+              } catch (error) {
+                console.error('Debug login error:', error);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="w-full py-2 text-xs text-purple-400 hover:text-purple-300 underline"
+            disabled={loading}
+          >
+            Debug Login (maryamkhaled913@gmail.com)
+          </button>
+        </div>
 
         <div className="mt-8 relative">
            <div className="absolute inset-0 flex items-center px-4"><div className="w-full border-t border-white/5"></div></div>

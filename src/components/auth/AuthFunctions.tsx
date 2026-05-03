@@ -47,11 +47,11 @@ export const signUp = async (email: string, password: string, fullName?: string)
         const { error: upsertError } = await supabase
           .from('profiles')
           .upsert({ 
-            user_id: data.user.id, 
+            id: data.user.id, 
             full_name: fullName,
             updated_at: new Date().toISOString()
           }, {
-            onConflict: 'user_id'
+            onConflict: 'id'
           });
 
         if (upsertError) {
@@ -87,7 +87,12 @@ export const signIn = async (email: string, password: string) => {
     });
     
     if (error) {
-      console.error('Sign in error:', error);
+      console.error('=== LOGIN ERROR DETAILS ===');
+      console.error('Error Code:', error.status);
+      console.error('Error Message:', error.message);
+      console.error('Full Error Object:', error);
+      console.error('Email attempted:', email);
+      console.error('=== END LOGIN ERROR ===');
       toast.error(error.message || 'Failed to sign in');
       return { success: false, error: error.message };
     }

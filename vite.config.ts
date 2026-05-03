@@ -20,6 +20,7 @@ export default defineConfig(({mode}) => {
         port: 3000,
         host: 'localhost',
         clientPort: 3000,
+        overlay: false,
       },
       watch: {
         usePolling: false,

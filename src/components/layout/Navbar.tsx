@@ -131,32 +131,35 @@ export default function Navbar() {
       
       if (error) {
         console.error('Supabase signOut error:', error);
-        toast.error('Error signing out');
-        return;
+        // Don't return, still try to clean up and redirect
       }
       
       console.log('Successfully signed out from Supabase');
       
+      // Close modals
       setLogoutModalOpen(false);
       setAuthModalOpen(false);
       
-      // Clear any localStorage data
-      localStorage.removeItem('swapill_user');
+      // Comprehensive cleanup
+      localStorage.clear(); // Clear all localStorage data
+      sessionStorage.clear(); // Clear session storage
       
-      // Force navigation to home page
-      navigate('/', { replace: true });
+      // Hard redirect to Login page
+      window.location.href = '/login';
       
       toast.success('Logged out successfully');
       
     } catch (error) {
       console.error('Unexpected error during logout:', error);
-      toast.error('An error occurred during logout');
       
       // Still try to clean up and redirect on error
       setLogoutModalOpen(false);
       setAuthModalOpen(false);
-      localStorage.removeItem('swapill_user');
-      navigate('/', { replace: true });
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
+      
+      toast.error('Logged out (with errors)');
     } finally {
       setIsLoggingOut(false);
     }

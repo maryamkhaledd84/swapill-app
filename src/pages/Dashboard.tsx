@@ -45,7 +45,7 @@ export default function Dashboard() {
         .from('skills')
         .delete()
         .eq('id', skillId)
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (error) {
         console.error('Error deleting skill:', error);
@@ -87,7 +87,7 @@ export default function Dashboard() {
           full_name: originalName,
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (updateError) {
         console.error('Error updating profile name:', updateError);
@@ -139,7 +139,7 @@ export default function Dashboard() {
           full_name: newFullName.trim(),
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (updateError) {
         console.error('Error updating profile name:', updateError);
