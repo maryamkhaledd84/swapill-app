@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from 'react-router-dom';
-import { Search, Code, Smartphone, Palette, TrendingUp, Globe, PenTool, Music, ChefHat, Sparkles, Camera, Mic, Kanban, User, MessageCircle, Clock, Check, Megaphone, Code2, BarChart3, Languages, Lightbulb } from "lucide-react";
+import { Search, Code, Smartphone, Palette, TrendingUp, Globe, PenTool, Music, ChefHat, Sparkles, Camera, Mic, Kanban, User, MessageCircle, Clock, Check, Megaphone, Code2, BarChart3, Languages, Lightbulb, UtensilsCrossed, Mic2, LayoutDashboard, Terminal } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { USERS, SKILLS } from "../data/mockData";
 import toast from 'react-hot-toast';
@@ -61,18 +61,18 @@ const useRealtimeProfiles = (onNewProfile: (profile: any) => void) => {
 // Skill Categories with icons (same as Profile)
 const SKILL_CATEGORIES = [
   { id: 'all', name: 'All Skills', icon: Search },
-  { id: 'web', name: 'Web Dev', icon: Code },
+  { id: 'web', name: 'Web Dev', icon: Code2 },
   { id: 'mobile', name: 'Mobile Dev', icon: Smartphone },
   { id: 'design', name: 'Design', icon: Palette },
   { id: 'marketing', name: 'Marketing', icon: TrendingUp },
-  { id: 'languages', name: 'Languages', icon: Globe },
+  { id: 'languages', name: 'Languages', icon: Languages },
   { id: 'writing', name: 'Writing', icon: PenTool },
   { id: 'music', name: 'Music', icon: Music },
-  { id: 'cooking', name: 'Cooking', icon: ChefHat },
-  { id: 'prompt', name: 'Prompt Eng', icon: Sparkles },
+  { id: 'cooking', name: 'Cooking', icon: UtensilsCrossed },
+  { id: 'prompt', name: 'Prompt Eng', icon: Terminal },
   { id: 'photography', name: 'Photography', icon: Camera },
-  { id: 'speaking', name: 'Speaking', icon: Mic },
-  { id: 'management', name: 'Project Mgmt', icon: Kanban },
+  { id: 'speaking', name: 'Speaking', icon: Mic2 },
+  { id: 'management', name: 'Project Mgmt', icon: LayoutDashboard },
 ];
 
 // Color palette for avatar circles
@@ -941,7 +941,7 @@ export default function Explore() {
                   : "bg-white/5 border-white/20 text-slate-400 hover:border-white/40 hover:text-white hover:bg-white/10"
               }`}
             >
-              {getSkillIcon(category.id)}
+              <category.icon className="w-4 h-4" />
               <span className="text-sm font-medium">{category.name}</span>
             </motion.button>
           ))}
